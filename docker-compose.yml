@@ -1,0 +1,64 @@
+services:
+  jobmanager:
+    build:
+      context: .
+      dockerfile: Dockerfile.jobmanager
+    container_name: flink-postgres-to-storrocks-jobmanager
+    ports:
+      - "8081:8081"
+    command: jobmanager
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+        taskmanager.numberOfTaskSlots: 2
+    volumes:
+      - flink_libs:/opt/flink/lib-extra
+
+  taskmanager:
+    build:
+      context: .
+      dockerfile: Dockerfile.taskmanager
+    container_name: flink-postgres-to-storrocks-taskmanager
+    depends_on:
+      - jobmanager
+    command: taskmanager
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+        taskmanager.numberOfTaskSlots: 2
+    volumes:
+      - flink_libs:/opt/flink/lib-extra
+
+  postgres1:
+    image: harbor.narvanventures.com/dockerhub/debezium/postgres:latest
+    container_name: flink-postgres-to-storrocks-postgres1
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: test
+
+  starrocks-fe:
+    image: harbor.narvanventures.com/dockerhub/starrocks/fe-ubuntu:latest
+    container_name: flink-postgres-to-storrocks-starrocks-fe
+    command: /opt/starrocks/fe/bin/start_fe.sh
+    ports:
+      - "8030:8030"
+      - "9030:9030"
+    volumes:
+      - starrocks-fe-meta:/opt/starrocks/fe/meta
+
+  starrocks-be:
+    image: harbor.narvanventures.com/dockerhub/starrocks/be-ubuntu:latest
+    container_name: flink-postgres-to-storrocks-starrocks-be
+    command: /opt/starrocks/be/bin/start_be.sh
+    volumes:
+      - starrocks-be-storage:/opt/starrocks/be/storage
+
+volumes:
+  flink_libs:
+  starrocks-fe-meta:
+  starrocks-be-storage:

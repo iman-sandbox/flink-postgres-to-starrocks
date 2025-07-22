@@ -1,0 +1,4 @@
+FROM harbor.narvanventures.com/dockerhub/flink:1.17-scala_2.12
+
+RUN mkdir -p /opt/flink/lib-extra
+COPY flink_libs/*.jar /opt/flink/lib-extra/
