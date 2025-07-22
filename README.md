@@ -4,9 +4,16 @@ This project sets up a **real-time CDC (Change Data Capture)** data pipeline usi
 
 ---
 
-## 📦 Architecture Overview (PlantUML)
+## 🧱 Architecture Overview
 
-> To render this diagram on GitHub, use a plugin like [PlantUML for Markdown](https://github.com/plantuml/plantuml-markdown) or a compatible renderer (e.g., [Kroki.io](https://kroki.io/)).
+![Architecture Diagram](https://www.plantuml.com/plantuml/png/SoWkIImgAStDuU9ApilEpKi5r4ZDoSa70000)
+
+> Diagram generated using [PlantUML Live](https://www.plantuml.com/plantuml)
+
+To modify it, use this [PlantUML Source](https://www.plantuml.com/plantuml/uml):
+
+<details>
+<summary>📝 Click to expand PlantUML source</summary>
 
 ```plantuml
 @startuml
@@ -16,8 +23,8 @@ actor Developer
 database PostgreSQL as PG
 component "Debezium\n(PostgreSQL CDC)" as Debezium
 component "Flink SQL Job" as FlinkSQL
-component "Flink\nJobManager" as JM
-component "Flink\nTaskManager" as TM
+component "FlinkJobManager" as JM
+component "FlinkTaskManager" as TM
 database "StarRocks FE + BE" as StarRocks
 
 Developer --> JM : Deploys SQL Jobs
@@ -27,23 +34,24 @@ FlinkSQL --> TM : Translates & Executes Jobs
 TM --> StarRocks : Insert Streamed Rows
 
 note right of PG
-Sample Postgres with test data
-running on port 5433
+  Sample Postgres with test data
+  running on port 5433
 end note
 
 note bottom of JM
-JobManager runs SQL
-logic and submits jobs
-to TaskManager.
+  JobManager runs SQL
+  logic and submits jobs
+  to TaskManager.
 end note
 
 note right of StarRocks
-StarRocks FE & BE run in
-coordinated mode to
-ingest streamed data.
+  StarRocks FE & BE run in
+  coordinated mode to
+  ingest streamed data.
 end note
 @enduml
-```
+
+</details> 
 
 ---
 
