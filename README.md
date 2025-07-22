@@ -1,133 +1,87 @@
-# Flink PostgreSQL to StarRocks Real-Time Pipeline
+# 🚀 Flink PostgreSQL to StarRocks CDC Pipeline
 
-This project sets up a **real-time CDC (Change Data Capture)** data pipeline using **Flink**, **Debezium**, and **StarRocks**. It reads data from PostgreSQL and streams it to StarRocks using Flink SQL jobs and Docker orchestration.
-
----
+This project demonstrates a complete Flink CDC pipeline using:
+- 📦 **Debezium** for PostgreSQL Change Data Capture
+- 🔄 **Apache Flink** to process and transform changes in real-time
+- 📊 **StarRocks** as the analytical sink
 
 ## 🧱 Architecture Overview
 
-![Architecture Diagram](https://www.plantuml.com/plantuml/png/SoWkIImgAStDuU9ApilEpKi5r4ZDoSa70000)
+To render the diagram below, use [Kroki.io](https://kroki.io) or a Markdown PlantUML renderer.
 
-> Diagram generated using [PlantUML Live](https://www.plantuml.com/plantuml)
-
-To modify it, use this [PlantUML Source](https://www.plantuml.com/plantuml/uml):
+![CDC Pipeline](https://kroki.io/plantuml/svg/eNp1VMFu2zAMvesruJxSFDm1u-wwdI2Tol0CZE2AXXKhbcYWIkuCJK9Lv36U1DjGttxs8_Hx8fElDz6gC32nxKfQUkfgLVaksBQCq2AcFPSLlLHkAH18ETUGLNETTDbGh8bR9sdqr6c78gEKrt1MInLzJCrTWaNJB5gUVNK77DvGfTR5mBfzDD0Xxw1LJfUREvOLKWFaFCu4hZVpZJWbEoDr_zSlhjVqbMgl5Mv6P5gd-uMYtFuP9tqyJa-mOnqWu3RGB9I1T3_E6shPef6AEYJNgdnsKw-CL7yMVebko3RgIT5JvxFi85Qw510Zuehk8PDz2wrmLeqGvBiKEXlekJHsFM9zhB1Mv-PhiDMfToqYdQAN87d9yby5GzYKteDPsbpL6iSfN1QtLH5T1fO-ijJol0HDVox91p5c-BhMdbqtENoEAiebNoA5xCtfQgCeqGbgmwwteOwsk0dT9_q11x6MBmuY8PP93Z2IjkaqvwmHLAxevEW9lI1SpuGbIPdSMq9KxoFPEv1V0iErBR2kztEDKy3xd4qkssqs2ZCYtQ6tlbq5zsmpuuQMyl6qmle0QXbyneq9pmSw5KUbh7b1cHCmi6m4ysgRHKUSXPTMokOlSI35fF8Gxl2Xdonm5ZzLxe3jAmSMWQB2S81YKe11vE-WlhNz4F88C1CnIKvRhAd-4v-IP_NEaq8=)
 
 <details>
-<summary>📝 Click to expand PlantUML source</summary>
+<summary>📜 PlantUML Source</summary>
 
 ```plantuml
 @startuml
-!theme plain
-actor Developer
+!theme spacelab
 
-database PostgreSQL as PG
-component "Debezium\n(PostgreSQL CDC)" as Debezium
-component "Flink SQL Job" as FlinkSQL
-component "FlinkJobManager" as JM
-component "FlinkTaskManager" as TM
-database "StarRocks FE + BE" as StarRocks
+actor Developer as Dev
+database "PostgreSQL\n(Test Data)" as PG
+component "Debezium\n(Postgres CDC)" as Debezium
+component "Flink SQL\nJob (DDL + Logic)" as FlinkSQL
+component "Flink\nJobManager" as JM
+component "Flink\nTaskManager" as TM
+database "StarRocks\n(Frontend + Backend)" as StarRocks
 
-Developer --> JM : Deploys SQL Jobs
+Dev --> JM : Deploys SQL Jobs (DDL)
+
 PG --> Debezium : Emits WAL Changes
-Debezium --> FlinkSQL : CDC Stream (Kafka-like)
-FlinkSQL --> TM : Translates & Executes Jobs
-TM --> StarRocks : Insert Streamed Rows
+Debezium --> FlinkSQL : CDC Stream (Kafka-style)
+
+FlinkSQL --> JM : Submit Flink Plan
+JM --> TM : Dispatch Executable Plan
+TM --> StarRocks : Insert Streamed Data
 
 note right of PG
-  Sample Postgres with test data
-  running on port 5433
+PostgreSQL seeded with sample data\nRuns on port 5433
 end note
 
-note bottom of JM
-  JobManager runs SQL
-  logic and submits jobs
-  to TaskManager.
+note right of Debezium
+Debezium watches WAL logs\nand emits change streams
+end note
+
+note right of FlinkSQL
+Defines CDC pipeline logic\nand table DDL mappings
+end note
+
+note right of JM
+JobManager builds optimized\nexecution graphs from SQL
+end note
+
+note right of TM
+TaskManager runs parallel\nexecution subtasks
 end note
 
 note right of StarRocks
-  StarRocks FE & BE run in
-  coordinated mode to
-  ingest streamed data.
+StarRocks FE+BE ingest real-time\ndata from Flink for analytics
 end note
 @enduml
+```
 
-</details> 
+</details>
 
----
+## 🛠 Components
 
-## 🔧 What’s Included
+| Component     | Description                                   |
+|---------------|-----------------------------------------------|
+| PostgreSQL    | Source DB generating WAL logs for Debezium    |
+| Debezium      | Captures WAL logs and produces CDC events     |
+| Flink SQL     | Defines pipeline transformations (Flink DDL)  |
+| JobManager    | Translates jobs into physical pipelines       |
+| TaskManager   | Executes jobs and pushes to StarRocks         |
+| StarRocks     | Real-time analytical store                     |
 
-| Component      | Description |
-|----------------|-------------|
-| `docker-compose.yml` | Spins up PostgreSQL, Debezium, StarRocks, Flink JobManager & TaskManager |
-| `setup_pipeline.sh`  | Automates cleanup, JAR download, build, and job submit |
-| `Dockerfile.jobmanager` & `Dockerfile.taskmanager` | Adds required connectors into Flink |
-| `flink_libs/`   | Auto-downloaded connector JARs (Postgres CDC, StarRocks Sink) |
-| `sql/*.sql`     | SQL scripts to create Flink source, sink, and CDC streaming jobs |
-
----
-
-## 🚀 Quick Start
+## 🧪 Local Development
 
 ```bash
-# Clone the repo
-git clone https://your.repo/flink-postgres-to-storrocks.git
-cd flink-postgres-to-storrocks
-
-# Start the full pipeline (Postgres → Flink → StarRocks)
-sudo bash setup_pipeline.sh
+./setup_pipeline.sh
 ```
 
-Once Flink JobManager is ready, it auto-runs:
-
-1. `create_source_postgres.sql`
-2. `create_sink_starrocks.sql`
-3. `cdc_job.sql`
-
-All changes from PostgreSQL are streamed live into StarRocks.
-
----
-
-## 📁 Project Layout
-
-```
-flink-postgres-to-storrocks/
-├── docker-compose.yml
-├── setup_pipeline.sh
-├── Dockerfile.jobmanager
-├── Dockerfile.taskmanager
-├── flink_libs/
-│   ├── flink-sql-connector-postgres-cdc-2.3.0.jar
-│   ├── flink-connector-starrocks-1.2.6_flink-1.15.jar
-│   └── flink-dist_2.12-1.16.2-csadh1.10.0.100.jar
-├── sql/
-│   ├── create_source_postgres.sql
-│   ├── create_sink_starrocks.sql
-│   └── cdc_job.sql
-└── README.md
-```
-
----
-
-## 🧠 Tips
-
-- PostgreSQL CDC via Debezium requires **logical replication** and a **replication slot**.
-- Make sure PostgreSQL and StarRocks containers have stable data directories if you want to persist data (optional in this project).
-- If you're behind a corporate proxy, export your `http_proxy`/`https_proxy` vars before running.
-
----
-
-## ✅ Final Output
-
-After the pipeline starts:
-- PostgreSQL emits changes (inserts, updates, deletes)
-- Flink reads the changes via Debezium
-- Transforms and inserts into StarRocks via stream sink
-
----
-
-For any issues, check container logs:
-```bash
-docker compose logs jobmanager
-docker compose logs taskmanager
-```
+> This will:
+> - Stop & clean existing containers
+> - Download required JARs (Debezium + StarRocks + Runtime)
+> - Start PostgreSQL, Flink, and StarRocks containers
+> - Deploy SQL CDC pipeline
