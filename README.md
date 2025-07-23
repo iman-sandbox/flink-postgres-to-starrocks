@@ -74,6 +74,33 @@ end note
 | TaskManager   | Executes jobs and pushes to StarRocks         |
 | StarRocks     | Real-time analytical store                     |
 
+---
+
+## ▶️ How to Run This Pipeline
+
+1. **Start Flink & StarRocks** (external PostgreSQL is assumed to be already running):
+```bash
+./setup_pipeline.sh
+```
+
+2. **Open Flink SQL Client**:
+```bash
+./open_sql_client.sh
+```
+
+3. **Load the CDC job**:
+```sql
+Flink SQL> source sql/01_init.sql;
+```
+
+This will:
+- Create a Flink CDC table from PostgreSQL
+- Create a StarRocks sink table
+- Continuously mirror changes
+- Also print changes via a debug sink
+
+---
+
 ## 🧪 Local Development
 
 ```bash
