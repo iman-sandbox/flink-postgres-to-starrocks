@@ -101,6 +101,25 @@ This will:
 
 ---
 
+## 🌐 Connect to External PostgreSQL
+
+This project now connects to an **external PostgreSQL database** (e.g. a production-like `supervisor-db-v1`) and uses Flink CDC to stream all changes from that DB into StarRocks.
+
+### 🔑 Connection Properties:
+```toml
+dbname = "postgres"
+user = "postgres"
+password = "postgres"
+host = "localhost"
+port = 5432
+```
+
+Make sure the external PostgreSQL is reachable and has [logical replication](https://www.postgresql.org/docs/current/logical-replication.html) enabled with `wal_level = logical`.
+
+---
+
+
+
 ## 🧪 Local Development
 
 ```bash

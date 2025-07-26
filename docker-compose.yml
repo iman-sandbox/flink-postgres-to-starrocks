@@ -1,64 +1,70 @@
+version: '3.8'
+
 services:
-  jobmanager:
-    build:
-      context: .
-      dockerfile: Dockerfile.jobmanager
-    container_name: flink-postgres-to-storrocks-jobmanager
-    ports:
-      - "8081:8081"
-    command: jobmanager
-    environment:
-      - |
-        FLINK_PROPERTIES=
-        jobmanager.rpc.address: jobmanager
-        taskmanager.numberOfTaskSlots: 2
-    volumes:
-      - flink_libs:/opt/flink/lib-extra
-
-  taskmanager:
-    build:
-      context: .
-      dockerfile: Dockerfile.taskmanager
-    container_name: flink-postgres-to-storrocks-taskmanager
-    depends_on:
-      - jobmanager
-    command: taskmanager
-    environment:
-      - |
-        FLINK_PROPERTIES=
-        jobmanager.rpc.address: jobmanager
-        taskmanager.numberOfTaskSlots: 2
-    volumes:
-      - flink_libs:/opt/flink/lib-extra
-
-  postgres1:
-    image: harbor.narvanventures.com/dockerhub/debezium/postgres:latest
-    container_name: flink-postgres-to-storrocks-postgres1
-    ports:
-      - "5433:5432"
+  postgres:
+    image: harbor.narvanventures.com/dockerhub/postgres:14
+    container_name: postgres
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: test
-
-  starrocks-fe:
-    image: harbor.narvanventures.com/dockerhub/starrocks/fe-ubuntu:latest
-    container_name: flink-postgres-to-storrocks-starrocks-fe
-    command: /opt/starrocks/fe/bin/start_fe.sh
+      POSTGRES_DB: postgres
     ports:
-      - "8030:8030"
-      - "9030:9030"
+      - "5432:5432"
     volumes:
-      - starrocks-fe-meta:/opt/starrocks/fe/meta
+      - ./pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
-  starrocks-be:
-    image: harbor.narvanventures.com/dockerhub/starrocks/be-ubuntu:latest
-    container_name: flink-postgres-to-storrocks-starrocks-be
-    command: /opt/starrocks/be/bin/start_be.sh
+  starrocks:
+    image: harbor.narvanventures.com/dockerhub/starrocks/allin1-ubuntu:latest
+    container_name: starrocks
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    ports:
+      - "9030:9030"    # MySQL FE
+      - "8030:8030"    # Web UI/HTTP
     volumes:
-      - starrocks-be-storage:/opt/starrocks/be/storage
+      - ./starrocks_data:/opt/starrocks
+    healthcheck:
+      test: ["CMD", "mysql", "-h", "127.0.0.1", "-P", "9030", "-uroot", "-e", "SHOW DATABASES;"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  jobmanager:
+    image: harbor.narvanventures.com/dockerhub/flink:1.17-scala_2.12
+    container_name: jobmanager
+    command: jobmanager
+    ports:
+      - "8081:8081"
+    volumes:
+      - ./flink_libs:/opt/flink/lib-extra
+      - ./sql:/opt/flink/sql
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+    depends_on:
+      - starrocks
+
+  taskmanager:
+    image: harbor.narvanventures.com/dockerhub/flink:1.17-scala_2.12
+    container_name: taskmanager
+    command: taskmanager
+    volumes:
+      - ./flink_libs:/opt/flink/lib-extra
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+    depends_on:
+      - jobmanager
 
 volumes:
-  flink_libs:
-  starrocks-fe-meta:
-  starrocks-be-storage:
+  pg_data:
+  starrocks_data:

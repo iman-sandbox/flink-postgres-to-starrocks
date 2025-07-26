@@ -1,51 +1,47 @@
--- ✅ CDC Source: embedded Postgres container
-CREATE TABLE embedded_table (
-  id INT,
-  name STRING,
-  updated_at TIMESTAMP(3),
-  PRIMARY KEY (id) NOT ENFORCED
+-- ------------------------------------------------------------------
+-- 1. Source Table: Read all changes from Postgres with Flink CDC
+-- ------------------------------------------------------------------
+CREATE TABLE postgres_test_data_types (
+    id INT,
+    name STRING,
+    updated_date DATE,
+    PRIMARY KEY (id) NOT ENFORCED
 ) WITH (
-  'connector' = 'postgres-cdc',
-  'hostname' = 'postgres1',
-  'port' = '5432',
-  'username' = 'postgres',
-  'password' = 'postgres',
-  'database-name' = 'test',
-  'schema-name' = 'public',
-  'table-name' = 'your_table_name',  -- 🔁 Replace with actual table name
-  'decoding.plugin.name' = 'pgoutput',
-  'scan.incremental.snapshot.enabled' = 'true'
+    'connector' = 'postgres-cdc',
+    'hostname' = 'postgres',
+    'port' = '5432',
+    'username' = 'postgres',
+    'password' = 'postgres',
+    'database-name' = 'postgres',
+    'schema-name' = 'public',
+    'table-name' = 'test_data_types',
+    'slot.name' = 'cdc_slot_test_data_types',
+    'decoding.plugin.name' = 'pgoutput'
 );
 
--- ✅ Debug Sink
-CREATE TABLE print_sink (
-  id INT,
-  name STRING,
-  updated_at TIMESTAMP(3)
+-- ------------------------------------------------------------------
+-- 2. Sink Table: StarRocks target table to write all CDC changes
+-- ------------------------------------------------------------------
+CREATE TABLE starrocks_test_data_types (
+    id INT,
+    name STRING,
+    updated_date DATE,
+    PRIMARY KEY (id) NOT ENFORCED
 ) WITH (
-  'connector' = 'print'
+    'connector' = 'starrocks',
+    'jdbc-url' = 'jdbc:mysql://starrocks:9030/postgres',
+    'load-url' = 'starrocks:8030',
+    'database-name' = 'postgres',
+    'table-name' = 'test_data_types',
+    'username' = 'root',
+    'password' = '',
+    'sink.buffer-flush.max-rows' = '64000',
+    'sink.buffer-flush.interval-ms' = '2000'
 );
 
--- ✅ StarRocks Sink
-CREATE TABLE starrocks_sink (
-  id INT,
-  name STRING,
-  updated_at TIMESTAMP(3),
-  PRIMARY KEY (id) NOT ENFORCED
-) WITH (
-  'connector' = 'starrocks',
-  'jdbc-url' = 'jdbc:mysql://starrocks-fe:9030',
-  'load-url' = 'http://starrocks-fe:8030',
-  'username' = 'root',
-  'password' = '',
-  'database-name' = 'test',
-  'table-name' = 'your_table_name'
-);
-
--- ✅ Stream changes to StarRocks
-INSERT INTO starrocks_sink
-SELECT * FROM embedded_table;
-
--- ✅ Stream to print sink
-INSERT INTO print_sink
-SELECT * FROM embedded_table;
+-- ------------------------------------------------------------------
+-- 3. Stream changes from Postgres (CDC) to StarRocks (Sink)
+-- ------------------------------------------------------------------
+INSERT INTO starrocks_test_data_types
+SELECT id, name, updated_date
+FROM postgres_test_data_types;
