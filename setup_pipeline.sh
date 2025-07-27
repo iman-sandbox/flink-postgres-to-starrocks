@@ -1,84 +1,114 @@
 #!/bin/bash
-set -e
 
-echo "📦 Stopping any existing containers..."
 docker compose down --remove-orphans
+# docker system prune -af
+# docker volume prune -f
+
+# Ensure external network exists
+if ! docker network inspect flink-net >/dev/null 2>&1; then
+    echo "🔗 Creating external network 'flink-net'..."
+    docker network create flink-net
+fi
 
 echo "⬇️  Downloading required JARs..."
 mkdir -p flink_libs
 
 # PostgreSQL CDC connector for Flink 1.17
-POSTGRES_CDC_JAR="flink_libs/flink-sql-connector-postgres-cdc-3.0.0.jar"
+POSTGRES_CDC_JAR="flink_libs/flink-sql-connector-postgres-cdc-2.4.0.jar"
 if [ ! -f "$POSTGRES_CDC_JAR" ]; then
   wget -O "$POSTGRES_CDC_JAR" \
-    https://repo1.maven.org/maven2/com/ververica/flink-sql-connector-postgres-cdc/3.0.0/flink-sql-connector-postgres-cdc-3.0.0.jar
+    https://repo1.maven.org/maven2/com/ververica/flink-sql-connector-postgres-cdc/2.4.0/flink-sql-connector-postgres-cdc-2.4.0.jar
 fi
 
 # StarRocks connector for Flink 1.17
-STARROCKS_JAR="flink_libs/flink-connector-starrocks-1.2.11_flink-1.17.jar"
+STARROCKS_JAR="flink_libs/flink-connector-starrocks-1.2.10_flink-1.17.jar"
 if [ ! -f "$STARROCKS_JAR" ]; then
   wget -O "$STARROCKS_JAR" \
-    https://repo1.maven.org/maven2/com/starrocks/flink-connector-starrocks/1.2.11_flink-1.17/flink-connector-starrocks-1.2.11_flink-1.17.jar
+    https://repo1.maven.org/maven2/com/starrocks/flink-connector-starrocks/1.2.10_flink-1.17/flink-connector-starrocks-1.2.10_flink-1.17.jar
 fi
 
 echo "✅ All connectors and runtime downloaded to ./flink_libs"
-echo "🔁 Rebuilding and starting containers..."
-docker compose build
+
+echo "🔁 Starting Postgres for WAL/CDC slot cleanup..."
+docker compose up -d postgres
+
+echo "⏳ Waiting for Postgres to be ready..."
+RETRIES=20
+until docker exec postgres pg_isready -U postgres > /dev/null 2>&1; do
+  sleep 1
+  RETRIES=$((RETRIES-1))
+  if [ "$RETRIES" -le 0 ]; then
+    echo "❌ Postgres did not become ready in time."
+    exit 1
+  fi
+done
+
+echo "🧹 Dropping old CDC replication slot if exists..."
+docker exec postgres psql -U postgres -d postgres -c "SELECT pg_drop_replication_slot('cdc_slot_test');" 2>/dev/null || true
+
+echo "🛑 Stopping only Postgres to clear state..."
+docker compose stop postgres
+
+echo "🔁 (Re)Starting all containers..."
+docker compose pull || true
 docker compose up -d
 
 echo "⏳ Waiting for Flink JobManager to be ready..."
-until curl -s http://localhost:8081 > /dev/null; do
-  echo "⏳ Still waiting for JobManager container..."
+RETRIES=30
+until curl -s http://localhost:8081/overview > /dev/null; do
   sleep 2
+  RETRIES=$((RETRIES-1))
+  if [ "$RETRIES" -le 0 ]; then
+    echo "❌ Flink JobManager did not become ready in time."
+    exit 1
+  fi
 done
-
 echo "✅ Flink JobManager is ready at http://localhost:8081"
 
-# Wait for StarRocks FE to be ready (port 9030)
 echo "⏳ Waiting for StarRocks FE to be ready..."
-until docker exec starrocks mysql -h 127.0.0.1 -P 9030 -uroot -e "SHOW DATABASES;" >/dev/null 2>&1; do
-  echo "⏳ Still waiting for StarRocks FE..."
-  sleep 3
+RETRIES=10
+until docker exec starrocks mysql -uroot -h127.0.0.1 -P9030 -e "SHOW DATABASES;" &>/dev/null; do
+  sleep 2
+  RETRIES=$((RETRIES-1))
+  if [ "$RETRIES" -le 0 ]; then
+    echo "❌ StarRocks FE did not become ready in time."
+    exit 1
+  fi
 done
+echo "✅ StarRocks FE is ready."
 
-echo "✅ StarRocks FE is ready. Initializing schema..."
-
-# Wait for at least one BE to be ready (Alive = true)
 echo "⏳ Waiting for StarRocks BE to be ready..."
-until docker exec starrocks mysql -h 127.0.0.1 -P 9030 -uroot -N -e 'SHOW BACKENDS;' | grep -q '\btrue\b'; do
-  echo "⏳ Still waiting for StarRocks BE..."
-  sleep 3
-done
+sleep 10  # Usually enough for BE after FE
 
-echo "📄 Creating test table and inserting data..."
+echo "📄 Creating test table and inserting data in Postgres..."
 
 docker exec -i postgres bash -c "cat > /init_test_table.sql" <<'EOF'
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
-DROP TABLE IF EXISTS test_data_types;
-CREATE TABLE test_data_types (
+DROP TABLE IF EXISTS test;
+CREATE TABLE IF NOT EXISTS test (
     id SERIAL PRIMARY KEY,
-    name TEXT,
-    description VARCHAR(255),
-    age INTEGER,
-    balance NUMERIC(10,2),
+    name VARCHAR(100),
+    description TEXT,
+    age INT,
+    balance NUMERIC,
     active BOOLEAN,
     created_at TIMESTAMP,
     updated_date DATE,
-    rating REAL,
+    rating DOUBLE PRECISION,
     big_value BIGINT,
     small_value SMALLINT,
     byte_value BYTEA,
     uuid_value UUID,
     inet_value INET,
-    json_value JSON,
+    json_value JSONB,
     tags TEXT[],
-    status CHAR(1),
+    status VARCHAR(50),
     interval_value INTERVAL
 );
 DO $$
 BEGIN
-  FOR i IN 1..50 LOOP
-    INSERT INTO test_data_types (
+  FOR i IN 1..5 LOOP
+    INSERT INTO test (
         name, description, age, balance, active, created_at, updated_date,
         rating, big_value, small_value, byte_value, uuid_value, inet_value,
         json_value, tags, status, interval_value
@@ -104,30 +134,46 @@ BEGIN
     );
   END LOOP;
 END $$;
-SELECT * FROM test_data_types;
+SELECT * FROM test;
 EOF
 
-echo "📝 Running SQL initialization..."
-docker exec -u postgres postgres psql -U postgres -f /init_test_table.sql
+docker exec postgres psql -U postgres -d postgres -f /init_test_table.sql
 
-# Create database and table if needed
-docker exec starrocks mysql -h 127.0.0.1 -P 9030 -uroot -e "
+echo "📝 Creating StarRocks database and table 'test'..."
+docker exec -i starrocks mysql -uroot -h127.0.0.1 -P9030 <<EOF
 CREATE DATABASE IF NOT EXISTS postgres;
+
 USE postgres;
-CREATE TABLE IF NOT EXISTS test_data_types (
-    id INT NOT NULL,
-    name VARCHAR(255),
-    updated_date DATE
+
+CREATE TABLE IF NOT EXISTS test (
+    id INT,
+    name VARCHAR(100),
+    description STRING,
+    age INT,
+    balance DECIMAL(38, 10),
+    active BOOLEAN,
+    created_at DATETIME,
+    updated_date DATE,
+    rating DOUBLE,
+    big_value BIGINT,
+    small_value SMALLINT,
+    byte_value STRING,
+    uuid_value STRING,
+    inet_value STRING,
+    json_value STRING,
+    tags ARRAY<STRING>,
+    status VARCHAR(50),
+    interval_value STRING
 )
-PRIMARY KEY (id)
-DISTRIBUTED BY HASH(id) BUCKETS 10
-PROPERTIES ('replication_num' = '1');
-"
+DUPLICATE KEY(id)
+DISTRIBUTED BY HASH(id) BUCKETS 8
+PROPERTIES (
+    "replication_num" = "1"
+);
+EOF
 
 echo "✅ StarRocks schema initialized."
-
-# Submit Flink SQL job
 echo "🚀 Loading Flink SQL job from sql/01_init.sql..."
-docker exec jobmanager ./bin/sql-client.sh \
-  --library /opt/flink/lib-extra \
-  -f /opt/flink/sql/01_init.sql
+docker exec jobmanager ./bin/sql-client.sh -f /opt/flink/sql/01_init.sql
+
+echo "✅ Flink CDC pipeline started."

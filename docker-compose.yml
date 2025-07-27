@@ -10,6 +10,11 @@ services:
       POSTGRES_DB: postgres
     ports:
       - "5432:5432"
+    command: >
+      -c wal_level=logical
+      -c max_wal_senders=10
+      -c max_replication_slots=10
+      -c listen_addresses=*
     volumes:
       - ./pg_data:/var/lib/postgresql/data
     healthcheck:
@@ -27,7 +32,7 @@ services:
         hard: 65536
     ports:
       - "9030:9030"    # MySQL FE
-      - "8030:8030"    # Web UI/HTTP
+      - "9030:9030"    # Web UI/HTTP
     volumes:
       - ./starrocks_data:/opt/starrocks
     healthcheck:
@@ -43,8 +48,10 @@ services:
     ports:
       - "8081:8081"
     volumes:
-      - ./flink_libs:/opt/flink/lib-extra
+      - ./flink_libs/flink-sql-connector-postgres-cdc-2.4.0.jar:/opt/flink/lib/flink-sql-connector-postgres-cdc-2.4.0.jar
+      - ./flink_libs/flink-connector-starrocks-1.2.10_flink-1.17.jar:/opt/flink/lib/flink-connector-starrocks-1.2.10_flink-1.17.jar
       - ./sql:/opt/flink/sql
+
     environment:
       - |
         FLINK_PROPERTIES=
@@ -57,7 +64,10 @@ services:
     container_name: taskmanager
     command: taskmanager
     volumes:
-      - ./flink_libs:/opt/flink/lib-extra
+      - ./flink_libs/flink-sql-connector-postgres-cdc-2.4.0.jar:/opt/flink/lib/flink-sql-connector-postgres-cdc-2.4.0.jar
+      - ./flink_libs/flink-connector-starrocks-1.2.10_flink-1.17.jar:/opt/flink/lib/flink-connector-starrocks-1.2.10_flink-1.17.jar
+      - ./sql:/opt/flink/sql
+
     environment:
       - |
         FLINK_PROPERTIES=
