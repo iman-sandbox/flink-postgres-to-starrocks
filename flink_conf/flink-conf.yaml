@@ -1,0 +1,4 @@
+jobmanager.memory.process.size: 1024m
+taskmanager.memory.process.size: 1024m
+taskmanager.numberOfTaskSlots: 2
+execution.checkpointing.interval: 10000

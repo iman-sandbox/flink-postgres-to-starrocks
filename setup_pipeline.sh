@@ -29,6 +29,14 @@ fi
 
 echo "✅ All connectors and runtime downloaded to ./flink_libs"
 
+mkdir -p flink_conf
+cat > flink_conf/flink-conf.yaml <<EOF
+jobmanager.memory.process.size: 1024m
+taskmanager.memory.process.size: 1024m
+taskmanager.numberOfTaskSlots: 2
+execution.checkpointing.interval: 10000
+EOF
+
 echo "🔁 Starting Postgres for WAL/CDC slot cleanup..."
 docker compose up -d postgres
 
@@ -88,54 +96,24 @@ DROP TABLE IF EXISTS test;
 CREATE TABLE IF NOT EXISTS test (
     id SERIAL PRIMARY KEY,
     name VARCHAR(100),
-    description TEXT,
-    age INT,
-    balance NUMERIC,
-    active BOOLEAN,
-    created_at TIMESTAMP,
-    updated_date DATE,
-    rating DOUBLE PRECISION,
-    big_value BIGINT,
-    small_value SMALLINT,
-    byte_value BYTEA,
-    uuid_value UUID,
-    inet_value INET,
-    json_value JSONB,
-    tags TEXT[],
-    status VARCHAR(50),
-    interval_value INTERVAL
+    description TEXT
 );
+ALTER TABLE test REPLICA IDENTITY FULL;
 DO $$
 BEGIN
   FOR i IN 1..5 LOOP
     INSERT INTO test (
-        name, description, age, balance, active, created_at, updated_date,
-        rating, big_value, small_value, byte_value, uuid_value, inet_value,
-        json_value, tags, status, interval_value
+        name, description
     )
     VALUES (
         'Name_' || i,
-        'Description for record ' || i,
-        floor(random() * 100)::int,
-        round((random() * 10000)::numeric, 2),
-        (random() > 0.5),
-        now() - (random() * interval '30 days'),
-        current_date - (random() * 365)::int,
-        random() * 5,
-        (random() * 100000)::bigint,
-        (random() * 100)::smallint,
-        decode(md5(random()::text), 'hex'),
-        gen_random_uuid(),
-        ('192.168.0.' || (random() * 255)::int)::inet,
-        json_build_object('key', 'value_' || i),
-        ARRAY['tag1', 'tag2', 'tag' || i],
-        chr(65 + (random()*25)::int),
-        (random() * interval '10 days')::interval
+        'Description for record ' || i
     );
   END LOOP;
 END $$;
 SELECT * FROM test;
 EOF
+
 
 docker exec postgres psql -U postgres -d postgres -f /init_test_table.sql
 
@@ -145,25 +123,12 @@ CREATE DATABASE IF NOT EXISTS postgres;
 
 USE postgres;
 
+DROP TABLE IF EXISTS test;
+
 CREATE TABLE IF NOT EXISTS test (
     id INT,
-    name VARCHAR(100),
-    description STRING,
-    age INT,
-    balance DECIMAL(38, 10),
-    active BOOLEAN,
-    created_at DATETIME,
-    updated_date DATE,
-    rating DOUBLE,
-    big_value BIGINT,
-    small_value SMALLINT,
-    byte_value STRING,
-    uuid_value STRING,
-    inet_value STRING,
-    json_value STRING,
-    tags ARRAY<STRING>,
-    status VARCHAR(50),
-    interval_value STRING
+    name STRING,
+    description STRING
 )
 DUPLICATE KEY(id)
 DISTRIBUTED BY HASH(id) BUCKETS 8

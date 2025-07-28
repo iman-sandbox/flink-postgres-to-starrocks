@@ -26,15 +26,22 @@ services:
   starrocks:
     image: harbor.narvanventures.com/dockerhub/starrocks/allin1-ubuntu:latest
     container_name: starrocks
-    ulimits:
-      nofile:
-        soft: 65536
-        hard: 65536
     ports:
-      - "9030:9030"    # MySQL FE
-      - "9030:9030"    # Web UI/HTTP
+      - "8030:8030"
+      - "8040:8040"
+      - "9030:9030"
+      - "9050:9050"
+      - "9060:9060"
+    ulimits:
+      nproc: 65535
+      nofile:
+        soft: 65535
+        hard: 65535
     volumes:
-      - ./starrocks_data:/opt/starrocks
+      - ./starrocks/data:/opt/starrocks
+    environment:
+      STARROCKS_FE_ARGS: "--daemon"
+      STARROCKS_BE_ARGS: "--daemon"
     healthcheck:
       test: ["CMD", "mysql", "-h", "127.0.0.1", "-P", "9030", "-uroot", "-e", "SHOW DATABASES;"]
       interval: 10s
