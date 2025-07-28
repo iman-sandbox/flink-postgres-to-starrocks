@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   postgres:
     image: harbor.narvanventures.com/dockerhub/postgres:14
@@ -38,7 +36,8 @@ services:
         soft: 65535
         hard: 65535
     volumes:
-      - ./starrocks/data:/opt/starrocks
+      - ./starrocks/data:/opt/starrocks/fe/conf/fe.conf
+      - ./starrocks/data:/opt/starrocks/be/conf/be.conf
     environment:
       STARROCKS_FE_ARGS: "--daemon"
       STARROCKS_BE_ARGS: "--daemon"

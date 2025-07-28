@@ -37,6 +37,16 @@ taskmanager.numberOfTaskSlots: 2
 execution.checkpointing.interval: 10000
 EOF
 
+# ... after FE startup:
+# Instead of `ADMIN SET FRONTEND CONFIG...`, run either:
+# Option A (if sql support):
+docker exec -i starrocks_fe mysql -uroot -e "SET GLOBAL stream_load_default_timeout_second = 600;"
+# Option B (edit fe.conf before startup):
+# Add line: stream_load_default_timeout_second=600
+
+# Then restart FE if using fe.conf
+
+
 echo "🔁 Starting Postgres for WAL/CDC slot cleanup..."
 docker compose up -d postgres
 
@@ -101,7 +111,7 @@ CREATE TABLE IF NOT EXISTS test (
 ALTER TABLE test REPLICA IDENTITY FULL;
 DO $$
 BEGIN
-  FOR i IN 1..5 LOOP
+  FOR i IN 1..10 LOOP
     INSERT INTO test (
         name, description
     )
@@ -125,16 +135,18 @@ USE postgres;
 
 DROP TABLE IF EXISTS test;
 
-CREATE TABLE IF NOT EXISTS test (
-    id INT,
-    name STRING,
-    description STRING
+CREATE TABLE test (
+  id INT,
+  name VARCHAR(100),
+  description VARCHAR(255)
 )
-DUPLICATE KEY(id)
-DISTRIBUTED BY HASH(id) BUCKETS 8
+ENGINE=OLAP
+PRIMARY KEY(id)
+DISTRIBUTED BY HASH(id) BUCKETS 1
 PROPERTIES (
-    "replication_num" = "1"
+  "replication_num" = "1"
 );
+
 EOF
 
 echo "✅ StarRocks schema initialized."
